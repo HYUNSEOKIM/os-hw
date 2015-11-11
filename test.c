@@ -9,9 +9,9 @@
 #include <sys/msg.h>
 
 enum state{
-	WAIT=1,
-	READY=2,
-	DONE=3,
+	WAIT,
+	READY,
+	DONE,
 };
 
 //structure declaration
@@ -37,6 +37,7 @@ struct msg{
 	long mtype;
 	pid_t pid;
 	int io;
+	int cpu;
 }MSG;
 
 //function declaration
@@ -85,6 +86,9 @@ int main (){
 		memset(&node[i],0,sizeof(NODE));
 	}
 
+	//initialize msg buffer
+	memset(&msg_buf,0,sizeof(MSG));
+
 	//to get random bursts
 	srand((unsigned)time(NULL)+(unsigned)getpid());
 	
@@ -124,21 +128,30 @@ int main (){
 
 			while(1){
 				if(msqid>0){
-					tmp = msgrcv(msqid,&msg_buf,sizeof(struct msg),1,0); //WAIT state get
+					tmp = msgrcv(msqid,&msg_buf,sizeof(struct msg),1,0);
 
 					if(tmp<0)
 						printf("msgrcv() fail\n");
-/*					else{
-						printf("ID = [%d] MSG = %s\n", msqid,msg_buf.buff);
-					} */ //no elemet, "buff", in msg_buf
-				}
+					else{
+					//	printf("ID = [%d] MSG = %s\n", msqid,msg_buf.buff); not exist buff
+					
+						//wait_to_ready
+						if(msg_buf.io == 0){
+							wait_to_run(msg_buf.pid);
+						}
 
+						//ready_to_wait
+						if(msg_buf.cpu == 0){
+							run_to_wait(msg_buf.pid);
+						}
+					} 
+				}
 			}									
 
 		//child
 		}else if (pid == 0){
 
-			do_child(i,pid);
+			do_child(i,getpid());
 			
 		}else printf("error\n");
 
@@ -227,14 +240,27 @@ void time_tick (int signo)
 }
 
 void do_child(int i, pid_t pid){
-
-	struct msg msg_buf;
+	int msqid=0;
+	struct msg msg_snd;
 
 	process[i]->pid = pid;
 	process[i]->cpu_b = rand()%100+1;
 	process[i]->io_b = rand()%100+1;
 	process[i]->state = READY;
 
+	memset(&msg_snd,0,sizeof(MSG));
+
+	msqid = msgget((key_t)1234,IPC_CREAT | 0644);
+
+
+
+//after update cpu_b & io_b
+	msg_snd.mtype = 1;
+	msg_snd.cpu = process[i]->cpu_b;
+	msg_snd.io = process[i]->io_b;
+
+	msgsnd(msqid,&msg_snd,sizeof(MSG),0);
+	
 
 }
 
