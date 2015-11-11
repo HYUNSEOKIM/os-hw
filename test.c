@@ -9,9 +9,9 @@
 #include <sys/msg.h>
 
 enum state{
-	WAIT,
-	READY,
-	DONE,
+	WAIT=1,
+	READY=2,
+	DONE=3,
 };
 
 //structure declaration
@@ -34,7 +34,7 @@ struct proc_q{
 }QUEUE;
 
 struct msg{
-	long mstate;
+	long mtype;
 	pid_t pid;
 	int io;
 }MSG;
@@ -44,14 +44,17 @@ struct proc_node *createnode(struct PCB *p);
 void init_q(struct proc_q *q);
 void destroy_q(struct proc_q *q);
 void enqueue_proc(struct proc_q *q,struct PCB *p);
-struct PCB dequeue_proc(struct proc_q *q);
+struct PCB dequeue_proc(struct proc_q *q,struct proc_node *target);
 void do_child(int i, pid_t pid);
 void time_tick (int signo);
 void wait_to_run();
 void run_to_wait();
+void wait_q_update();
+struct proc_node *findnode(pid_t pid);
 
 //Global variables
 struct PCB *process[10];
+struct proc_node *node[10];
 int global_tick;
 struct PCB *now;
 struct proc_q *run_q;
@@ -77,6 +80,11 @@ int main (){
 		memset(&process[i],0,sizeof(PCB));
 	}
 
+	for(i=0; i<10; i++){
+		node[i] = (struct proc_node*)malloc(sizeof(NODE));
+		memset(&node[i],0,sizeof(NODE));
+	}
+
 	//to get random bursts
 	srand((unsigned)time(NULL)+(unsigned)getpid());
 	
@@ -85,7 +93,7 @@ int main (){
 	act.sa_handler = &time_tick;
 	sigaction(SIGALRM,&act,NULL);
 
-	//Cpmfogire the timer to expire after 250 msec
+	//Configure the timer to expire after 250 msec
 	timer.it_value.tv_sec = 1;
 	timer.it_value.tv_usec = 0;
 
@@ -102,7 +110,8 @@ int main (){
 
 		//parent
 		if(pid > 0){
-			enqueue_proc(run_q,process[i]);
+			node[i] = createnode(process[i]);
+			enqueue_proc(run_q,node[i]);
 
 			msqid = msgget((key_t)1234,IPC_CREAT | 0644);
 
@@ -115,7 +124,7 @@ int main (){
 
 			while(1){
 				if(msqid>0){
-					tmp = msgrcv(msqid,&msg_buf,sizeof(struct msg),0,0); //WAIT state
+					tmp = msgrcv(msqid,&msg_buf,sizeof(struct msg),1,0); //WAIT state get
 
 					if(tmp<0)
 						printf("msgrcv() fail\n");
@@ -163,52 +172,63 @@ void destroy_q(struct proc_q  *q){
 }
 		
 
-void enqueue_proc(struct proc_q *q, struct PCB *p){
-	struct proc_node *node = createnode(p);
+void enqueue_proc(struct proc_q *q, struct proc_node *p){
 	if(q->front == NULL){
-		q->front = q->back = node;
+		q->front = p;
+		q->back = NULL;
 	}
 
 	else{
-		q->back->next = node;
-		q->back = node;
+		q->back->next = p;
+		q->back = p;
+		q->back->next = NULL;
 	}
 
 	q->size++;
 }
 
-struct PCB dequeue_proc(struct proc_q *q){
-	struct proc_node *delete = q->front;
-	struct PCB tmp_pcb;
+struct proc_node dequeue_proc(struct proc_q *q, struct proc_node *target){
+	struct proc_node *tmp;
 
-	if(q->size == 1){
-		q->front = NULL;
-		q->back = NULL;
-	}else if(q->size > 1){
-		if(q->front->next != NULL)		
-			q->front = delete->next;
-			tmp_pcb=*delete->data;
-			free(delete);
+	if(q->front == target){
+		q->front = target->next;
+		q->size--;
+		return target;
 	}
-	q->size--;
-	return tmp_pcb;
+
+	else{
+		tmp=q->front;
+		while( tmp != NULL && tmp->next != target){
+			tmp = tmp->next;
+		}
+
+		if(tmp != NULL){
+			tmp->next = target->next;	
+			q->size --;
+			return target;
+		}
+	}
 }
+	
+	
 void time_tick (int signo)
 {
+	int i=0;
 	global_tick++;
 
-	if(global_tick>30){
-		int i =0;
+	if(global_tick>10){
 		for (i=0; i<10; i++)
 			kill (process[i]->pid,SIGKILL);
 
 		kill(getpid(),SIGKILL);
-
+	global_tick = 0;
 		return;
 	}
 }
 
 void do_child(int i, pid_t pid){
+
+	struct msg msg_buf;
 
 	process[i]->pid = pid;
 	process[i]->cpu_b = rand()%100+1;
@@ -218,42 +238,47 @@ void do_child(int i, pid_t pid){
 
 }
 
+struct proc_node *findnode(pid_t pid){
+	struct proc_node *tmp;
+	tmp = wait_q->front;
 
-void wait_to_run(){
-
-	int i;
-	int wait_q_size = wait_q->size;
-	struct PCB *target;
-
-	if(wait_q_size == 0)
-		return;
-
-	for(i=0;i<wait_q_size;i++){
-		*target = dequeue_proc(wait_q);
-		
-		//update target's PCB
-		if(target->io_b <= 0 && target->state == WAIT){//goes to run_q
-			target->state = READY;
-			target->cpu_b = rand()%100+1;
-			target->io_b = rand()%100+1;
-	
-			enqueue_proc(run_q,target);
-		}else if(target->io_b <= 0 && target->cpu_b <= 0){//retired process
-			target->state = DONE;
-		}else if(target->io_b > 0){ //stay in wait_q
-			enqueue(wait_q,target);
-		}
+	while(tmp){
+		if(tmp->data.pid == pid) break;
+		else tmp=tmp->next;
 	}
+
+	return tmp;
+}
+
+
+void wait_to_run(pid_t pid){
+
+	struct proc_node *target;
+	struct proc_node *delete;
+
+	target = findnode(pid);
+	delete = dequeue_proc(wait_q,target);
+
+	delete->data.state = READY;
+	delete->data.cpu_b = rand()%100+1;
+	delete->data.io_b = rand()%100+1;
+
+	enqueue_proc(run_q,delete);
 
 	return;
 }	
 
-void run_to_wait(){
+void run_to_wait(pid_t pid){
 
-	run_q->front->data.state = WAIT;
+	struct proc_node *target;
+	struct proc_node *delete;
 
-	dequeue_proc(run_q);
-   	enqueue_proc(wait_q);
+	target = findnode(pid);
+	delete = dequeue_proc(run_q,target);
+
+	delete->data.state = WAIT;
+
+	enqueue_proc(wait_q,delete);
 
 	//if cpu_b == 0 : retired process 
 	//this process should go to wait_q
@@ -272,4 +297,7 @@ int schedule(){
 		if(wait_q  != NULL){
 			
 
+		}
+	}
 
+}
