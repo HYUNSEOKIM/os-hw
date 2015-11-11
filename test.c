@@ -43,8 +43,8 @@ struct msg{
 struct proc_node *createnode(struct PCB *p);
 void init_q(struct proc_q *q);
 void destroy_q(struct proc_q *q);
-void enqueue_proc(struct proc_q *q,struct PCB *p);
-struct PCB dequeue_proc(struct proc_q *q,struct proc_node *target);
+void enqueue_proc(struct proc_q *q,struct proc_node *p);
+struct proc_node *dequeue_proc(struct proc_q *q,struct proc_node *target);
 void do_child(int i, pid_t pid);
 void time_tick (int signo);
 void wait_to_run();
@@ -103,7 +103,7 @@ int main (){
 
 	//Start a timer. It counts down whenever this process is executing.
 	global_tick = 0;
-	setitimer(TIMER_REAL,&timer,NULL);
+	setitimer(ITIMER_REAL,&timer,NULL);
 
 	for(i=0; i<10; i++){
 		pid = fork();
@@ -128,9 +128,9 @@ int main (){
 
 					if(tmp<0)
 						printf("msgrcv() fail\n");
-					else{
-						printf("ID = [%d] MSG = %s\n", msgid,msg_buf.buff);
-					}
+/*					else{
+						printf("ID = [%d] MSG = %s\n", msqid,msg_buf.buff);
+					} */ //no elemet, "buff", in msg_buf
 				}
 
 			}									
@@ -187,7 +187,7 @@ void enqueue_proc(struct proc_q *q, struct proc_node *p){
 	q->size++;
 }
 
-struct proc_node dequeue_proc(struct proc_q *q, struct proc_node *target){
+struct proc_node *dequeue_proc(struct proc_q *q, struct proc_node *target){
 	struct proc_node *tmp;
 
 	if(q->front == target){
@@ -243,7 +243,7 @@ struct proc_node *findnode(pid_t pid){
 	tmp = wait_q->front;
 
 	while(tmp){
-		if(tmp->data.pid == pid) break;
+		if(tmp->data->pid == pid) break;
 		else tmp=tmp->next;
 	}
 
@@ -259,9 +259,9 @@ void wait_to_run(pid_t pid){
 	target = findnode(pid);
 	delete = dequeue_proc(wait_q,target);
 
-	delete->data.state = READY;
-	delete->data.cpu_b = rand()%100+1;
-	delete->data.io_b = rand()%100+1;
+	delete->data->state = READY;
+	delete->data->cpu_b = rand()%100+1;
+	delete->data->io_b = rand()%100+1;
 
 	enqueue_proc(run_q,delete);
 
@@ -276,7 +276,7 @@ void run_to_wait(pid_t pid){
 	target = findnode(pid);
 	delete = dequeue_proc(run_q,target);
 
-	delete->data.state = WAIT;
+	delete->data->state = WAIT;
 
 	enqueue_proc(wait_q,delete);
 
