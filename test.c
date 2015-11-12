@@ -136,12 +136,12 @@ int main (){
 					//	printf("ID = [%d] MSG = %s\n", msqid,msg_buf.buff); not exist buff
 					
 						//wait_to_ready
-						if(msg_buf.io == 0){
+						if(msg_buf.cpu == 0 && msg_buf.io == 0){
 							wait_to_run(msg_buf.pid);
 						}
 
 						//ready_to_wait
-						if(msg_buf.cpu == 0){
+						else if(msg_buf.cpu == 0 && msg_buf.io != 0){
 							run_to_wait(msg_buf.pid);
 						}
 					} 
