@@ -41,7 +41,7 @@ struct msg{
 }MSG;
 
 //function declaration
-struct proc_node *createnode(struct PCB *p);
+struct proc_node *createnode(struct PCB *p, struct proc_node *node);
 void init_q(struct proc_q *q);
 void destroy_q(struct proc_q *q);
 void enqueue_proc(struct proc_q *q,struct proc_node *p);
@@ -114,7 +114,7 @@ int main (){
 
 		//parent
 		if(pid > 0){
-			node[i] = createnode(process[i]);
+			node[i] = createnode(process[i],node[i]);
 			enqueue_proc(run_q,node[i]);
 
 			msqid = msgget((key_t)1234,IPC_CREAT | 0644);
@@ -159,9 +159,7 @@ int main (){
 }
 
 
-struct proc_node *createnode(struct PCB *p){
-	struct proc_node *node = (struct proc_node*)malloc(sizeof(struct proc_node));
-	if (node == NULL) error("out of memory\n");
+struct proc_node *createnode(struct PCB *p, struct proc_node *node){
 
 	node->data = p;
 	node->next = NULL;
