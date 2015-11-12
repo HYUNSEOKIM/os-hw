@@ -69,6 +69,7 @@ int main (){
 	int tmp=0;
 
 	struct sigaction act;
+	struct sigaction oact;
 	struct itimerval timer;
 	struct msg msg_buf;
 	
@@ -95,15 +96,15 @@ int main (){
 	//Install timer_handler as the signal handler for SIGALARM
 	memset(&act,0,sizeof(act));
 	act.sa_handler = &time_tick;
-	sigaction(SIGALRM,&act,NULL);
+	sigaction(SIGALRM,&act,&oact);
 
 	//Configure the timer to expire after 250 msec
-	timer.it_value.tv_sec = 1;
-	timer.it_value.tv_usec = 0;
+	timer.it_value.tv_sec = 0;
+	timer.it_value.tv_usec = 250000;
 
 	//...and every 250 msec after that.
-	timer.it_interval.tv_sec=1;
-	timer.it_interval.tv_usec = 0;
+	timer.it_interval.tv_sec=0;
+	timer.it_interval.tv_usec = 250000;
 
 	//Start a timer. It counts down whenever this process is executing.
 	global_tick = 0;
@@ -156,6 +157,8 @@ int main (){
 		}else printf("error\n");
 
 	}
+
+	sigaction(SIGALRM, &oact, NULL);
 }
 
 
@@ -220,26 +223,29 @@ struct proc_node *dequeue_proc(struct proc_q *q, struct proc_node *target){
 		}
 	}
 }
-	
-	
+
 void time_tick (int signo)
 {
+
 	int i=0;
+
 	global_tick++;
 
-	if(global_tick>10){
+	if(global_tick>10000000){
 		for (i=0; i<10; i++)
 			kill (process[i]->pid,SIGKILL);
 
 		kill(getpid(),SIGKILL);
-	global_tick = 0;
-		return;
+
 	}
 }
 
 void do_child(int i, pid_t pid){
 	int msqid=0;
 	struct msg msg_snd;
+
+	// SIGUSR1 handler is XXX
+	sigaction(SIGUSR1, sa);
 
 	process[i]->pid = pid;
 	process[i]->cpu_b = rand()%100+1;
